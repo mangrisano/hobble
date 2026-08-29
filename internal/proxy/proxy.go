@@ -49,6 +49,10 @@ const maxLoggedBodyBytes = 500
 // truncated if it was longer.
 func truncateBody(body []byte) string {
 	flattened := strings.Join(strings.Fields(string(body)), " ")
+	// slog.TextHandler quotes the whole value and backslash-escapes any
+	// double quote inside it; JSON/HTML bodies are full of those, so swap
+	// them for single quotes to keep the log line readable.
+	flattened = strings.ReplaceAll(flattened, `"`, "'")
 	if len(flattened) <= maxLoggedBodyBytes {
 		return flattened
 	}

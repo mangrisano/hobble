@@ -135,16 +135,16 @@ func TestNewReverseProxyLogsForwardedRequests(t *testing.T) {
 	}
 
 	out := logs.String()
-	for _, want := range []string{"forwarded request", "path=/hello", "status=418", `body="{\"error\":\"short and stout\"}"`} {
+	for _, want := range []string{"forwarded request", "path=/hello", "status=418", `body="{'error':'short and stout'}"`} {
 		if !bytes.Contains([]byte(out), []byte(want)) {
 			t.Fatalf("log output = %q, want it to contain %q", out, want)
 		}
 	}
 }
 
-func TestTruncateBodyFlattensWhitespace(t *testing.T) {
+func TestTruncateBodyFlattensWhitespaceAndQuotes(t *testing.T) {
 	got := truncateBody([]byte("{\n  \"a\": 1,\n  \"b\": 2\n}\n"))
-	want := `{ "a": 1, "b": 2 }`
+	want := `{ 'a': 1, 'b': 2 }`
 	if got != want {
 		t.Fatalf("truncateBody(...) = %q, want %q", got, want)
 	}
