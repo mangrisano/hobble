@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
@@ -20,7 +22,12 @@ func NewReverseProxy(target string) (http.Handler, error) {
 			r.SetURL(result)
 		},
 		ModifyResponse: func(resp *http.Response) error {
-			slog.Info("forwarded request", "path", resp.Request.URL.Path, "status", resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("reading response body: %w", err)
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+			slog.Info("forwarded request", "path", resp.Request.URL.Path, "status", resp.StatusCode, "body", truncateBody(body))
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -29,6 +36,19 @@ func NewReverseProxy(target string) (http.Handler, error) {
 		},
 	}
 	return rp, nil
+}
+
+// maxLoggedBodyBytes caps how much of a response body ends up in a log
+// line, so a bug report is self-contained without flooding the log.
+const maxLoggedBodyBytes = 500
+
+// truncateBody renders body as a string suitable for a log line, cutting it
+// at maxLoggedBodyBytes and marking it as truncated if it was longer.
+func truncateBody(body []byte) string {
+	if len(body) <= maxLoggedBodyBytes {
+		return string(body)
+	}
+	return string(body[:maxLoggedBodyBytes]) + "...(truncated)"
 }
 
 func validateURL(u string) (*url.URL, error) {
@@ -85,7 +105,7 @@ func WithFaults(next http.Handler, statusRules []StatusRule, latency LatencyRang
 		}
 		rule, ok := pickStatusRule(statusRules)
 		if ok {
-			slog.Info("injecting status", "path", r.URL.Path, "code", rule.Code, "probability", rule.Probability)
+			slog.Info("injecting status", "path", r.URL.Path, "code", rule.Code, "probability", rule.Probability, "body", "")
 			w.WriteHeader(rule.Code)
 			return
 		}

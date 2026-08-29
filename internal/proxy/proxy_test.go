@@ -108,6 +108,7 @@ func TestNewReverseProxyRewritesHostHeader(t *testing.T) {
 func TestNewReverseProxyLogsForwardedRequests(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
+		w.Write([]byte(`{"error":"short and stout"}`))
 	}))
 	defer upstream.Close()
 
@@ -120,15 +121,58 @@ func TestNewReverseProxyLogsForwardedRequests(t *testing.T) {
 	frontend := httptest.NewServer(proxy)
 	defer frontend.Close()
 
-	if _, err := http.Get(frontend.URL + "/hello"); err != nil {
+	resp, err := http.Get(frontend.URL + "/hello")
+	if err != nil {
 		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if string(body) != `{"error":"short and stout"}` {
+		t.Fatalf("body = %q, want the untouched upstream body (logging must not consume it)", body)
 	}
 
 	out := logs.String()
-	for _, want := range []string{"forwarded request", "path=/hello", "status=418"} {
+	for _, want := range []string{"forwarded request", "path=/hello", "status=418", `body="{\"error\":\"short and stout\"}"`} {
 		if !bytes.Contains([]byte(out), []byte(want)) {
 			t.Fatalf("log output = %q, want it to contain %q", out, want)
 		}
+	}
+}
+
+func TestNewReverseProxyTruncatesLoggedBody(t *testing.T) {
+	longBody := bytes.Repeat([]byte("a"), maxLoggedBodyBytes+50)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(longBody)
+	}))
+	defer upstream.Close()
+
+	proxy, err := NewReverseProxy(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewReverseProxy(%q) error = %v", upstream.URL, err)
+	}
+
+	logs := captureLogs(t)
+	frontend := httptest.NewServer(proxy)
+	defer frontend.Close()
+
+	resp, err := http.Get(frontend.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if len(body) != len(longBody) {
+		t.Fatalf("client received %d bytes, want %d (truncation must only affect the log, not the real response)", len(body), len(longBody))
+	}
+
+	if !bytes.Contains(logs.Bytes(), []byte("...(truncated)")) {
+		t.Fatalf("log output = %q, want it to mark the body as truncated", logs.String())
 	}
 }
 
