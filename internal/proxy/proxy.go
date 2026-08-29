@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -42,13 +43,16 @@ func NewReverseProxy(target string) (http.Handler, error) {
 // line, so a bug report is self-contained without flooding the log.
 const maxLoggedBodyBytes = 500
 
-// truncateBody renders body as a string suitable for a log line, cutting it
-// at maxLoggedBodyBytes and marking it as truncated if it was longer.
+// truncateBody renders body as a single-line string suitable for a log
+// line: whitespace collapsed so a pretty-printed JSON/HTML body doesn't turn
+// into a wall of escaped "\n", cut at maxLoggedBodyBytes and marked as
+// truncated if it was longer.
 func truncateBody(body []byte) string {
-	if len(body) <= maxLoggedBodyBytes {
-		return string(body)
+	flattened := strings.Join(strings.Fields(string(body)), " ")
+	if len(flattened) <= maxLoggedBodyBytes {
+		return flattened
 	}
-	return string(body[:maxLoggedBodyBytes]) + "...(truncated)"
+	return flattened[:maxLoggedBodyBytes] + "...(truncated)"
 }
 
 func validateURL(u string) (*url.URL, error) {

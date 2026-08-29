@@ -142,6 +142,14 @@ func TestNewReverseProxyLogsForwardedRequests(t *testing.T) {
 	}
 }
 
+func TestTruncateBodyFlattensWhitespace(t *testing.T) {
+	got := truncateBody([]byte("{\n  \"a\": 1,\n  \"b\": 2\n}\n"))
+	want := `{ "a": 1, "b": 2 }`
+	if got != want {
+		t.Fatalf("truncateBody(...) = %q, want %q", got, want)
+	}
+}
+
 func TestNewReverseProxyTruncatesLoggedBody(t *testing.T) {
 	longBody := bytes.Repeat([]byte("a"), maxLoggedBodyBytes+50)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
