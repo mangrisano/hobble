@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func TestRootCmdFlagShorthands(t *testing.T) {
 	cmd := newRootCmd()
@@ -22,6 +25,19 @@ func TestRootCmdFlagShorthands(t *testing.T) {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("flag --%s not registered", name)
 		}
+	}
+}
+
+func TestRootCmdVersionFlag(t *testing.T) {
+	cmd := newRootCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--version"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() with --version error = %v, want nil", err)
+	}
+	if out.String() != "hobble dev\n" {
+		t.Fatalf("Execute() with --version output = %q, want %q", out.String(), "hobble dev\n")
 	}
 }
 
