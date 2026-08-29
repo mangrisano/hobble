@@ -34,6 +34,24 @@ archives:
 checksum:
   name_template: checksums.txt
 
+homebrew_casks:
+  - name: hobble
+    repository:
+      owner: mangrisano
+      name: homebrew-hobble
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/mangrisano/hobble"
+    description: "A fault-injection reverse proxy for testing client resilience"
+    binaries:
+      - hobble
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/hobble"]
+          end
+
 changelog:
   sort: asc
   filters:

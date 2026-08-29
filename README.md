@@ -27,6 +27,12 @@ it handles latency, errors, and dropped connections.
 
 ## Install
 
+### Homebrew (macOS / Linux)
+
+```sh
+brew install mangrisano/hobble/hobble
+```
+
 ### Go
 
 ```sh
