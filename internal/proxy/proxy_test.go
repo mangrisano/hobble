@@ -1,11 +1,24 @@
 package proxy
 
 import (
+	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+// captureLogs redirects the default slog logger to a buffer for the
+// duration of a test, restoring the previous logger afterwards.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buf
+}
 
 func TestValidateURL(t *testing.T) {
 	tests := []struct {
@@ -89,6 +102,61 @@ func TestNewReverseProxyRewritesHostHeader(t *testing.T) {
 
 	if gotHost != upstreamHost {
 		t.Fatalf("upstream saw Host = %q, want %q (the frontend's own host would break virtual-host routing on the real target)", gotHost, upstreamHost)
+	}
+}
+
+func TestNewReverseProxyLogsForwardedRequests(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer upstream.Close()
+
+	proxy, err := NewReverseProxy(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewReverseProxy(%q) error = %v", upstream.URL, err)
+	}
+
+	logs := captureLogs(t)
+	frontend := httptest.NewServer(proxy)
+	defer frontend.Close()
+
+	if _, err := http.Get(frontend.URL + "/hello"); err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+
+	out := logs.String()
+	for _, want := range []string{"forwarded request", "path=/hello", "status=418"} {
+		if !bytes.Contains([]byte(out), []byte(want)) {
+			t.Fatalf("log output = %q, want it to contain %q", out, want)
+		}
+	}
+}
+
+func TestNewReverseProxyLogsUpstreamFailures(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	upstreamURL := upstream.URL
+	upstream.Close() // closed immediately: target is now unreachable
+
+	proxy, err := NewReverseProxy(upstreamURL)
+	if err != nil {
+		t.Fatalf("NewReverseProxy(%q) error = %v", upstreamURL, err)
+	}
+
+	logs := captureLogs(t)
+	frontend := httptest.NewServer(proxy)
+	defer frontend.Close()
+
+	resp, err := http.Get(frontend.URL + "/hello")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+	if out := logs.String(); !bytes.Contains([]byte(out), []byte("forwarding request failed")) {
+		t.Fatalf("log output = %q, want it to contain %q", out, "forwarding request failed")
 	}
 }
 

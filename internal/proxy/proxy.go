@@ -19,6 +19,14 @@ func NewReverseProxy(target string) (http.Handler, error) {
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(result)
 		},
+		ModifyResponse: func(resp *http.Response) error {
+			slog.Info("forwarded request", "path", resp.Request.URL.Path, "status", resp.StatusCode)
+			return nil
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			slog.Warn("forwarding request failed", "path", r.URL.Path, "error", err)
+			w.WriteHeader(http.StatusBadGateway)
+		},
 	}
 	return rp, nil
 }
