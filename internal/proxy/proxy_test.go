@@ -67,6 +67,31 @@ func TestNewReverseProxyForwardsRequests(t *testing.T) {
 	}
 }
 
+func TestNewReverseProxyRewritesHostHeader(t *testing.T) {
+	var gotHost string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+	}))
+	defer upstream.Close()
+	upstreamHost := upstream.URL[len("http://"):]
+
+	proxy, err := NewReverseProxy(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewReverseProxy(%q) error = %v", upstream.URL, err)
+	}
+
+	frontend := httptest.NewServer(proxy)
+	defer frontend.Close()
+
+	if _, err := http.Get(frontend.URL); err != nil {
+		t.Fatalf("GET %s: %v", frontend.URL, err)
+	}
+
+	if gotHost != upstreamHost {
+		t.Fatalf("upstream saw Host = %q, want %q (the frontend's own host would break virtual-host routing on the real target)", gotHost, upstreamHost)
+	}
+}
+
 func TestNewReverseProxyInvalidTarget(t *testing.T) {
 	if _, err := NewReverseProxy("not-a-target"); err == nil {
 		t.Fatalf("NewReverseProxy(%q) error = nil, want error", "not-a-target")

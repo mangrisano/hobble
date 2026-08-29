@@ -15,7 +15,11 @@ func NewReverseProxy(target string) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	rp := httputil.NewSingleHostReverseProxy(result)
+	rp := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(result)
+		},
+	}
 	return rp, nil
 }
 
